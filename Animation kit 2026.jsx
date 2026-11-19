@@ -230,18 +230,42 @@ function renderNativePreview(number, mode) {
         startNativePreviewPlayback(renderedFrames);
         success = true;
     } catch (previewError) {
-        if (previewStatus) { previewStatus.text = "Preview unavailable: " + previewError.toString(); }
+        // Keep failed preview assets in the project and Render Queue for diagnosis.
+        // The previous implementation removed both in finally, making the queue look empty.
+        var diagnostic = "Preview unavailable: " + previewError.toString();
+        if (queueItem) {
+            try {
+                diagnostic += " | Render Queue item #" + queueItem.index + " preserved";
+                queueItem.render = true;
+            } catch (queueDiagnosticError) {}
+        } else {
+            diagnostic += " | No Render Queue item was created";
+        }
+        if (tempFolder) {
+            diagnostic += " | Files: " + tempFolder.fsName;
+        }
+        if (previewStatus) { previewStatus.text = diagnostic; }
     } finally {
         inSliderText.text = oldInText;
         outSliderText.text = oldOutText;
         inCheckbox.value = oldInEnabled;
         outCheckbox.value = oldOutEnabled;
         for (var restore2 = 0; restore2 < oldRenderStates.length; restore2++) {
-            try { oldRenderStates[restore2].item.render = oldRenderStates[restore2].render; } catch (restoreError2) {}
+            try {
+                if (oldRenderStates[restore2].item !== queueItem || success) {
+                    oldRenderStates[restore2].item.render = oldRenderStates[restore2].render;
+                }
+            } catch (restoreError2) {}
         }
-        try { if (queueItem) { queueItem.remove(); } } catch (queueRemoveError) {}
-        try { if (previewComp) { previewComp.remove(); } } catch (compRemoveError) {}
-        if (tempFolder) { removePreviewFolder(tempFolder); }
+        // Remove temporary project assets only after a successful render.
+        // On failure, leave the comp and queue item visible so the user can inspect them.
+        if (success) {
+            try { if (queueItem) { queueItem.remove(); } } catch (queueRemoveError) {}
+            try { if (previewComp) { previewComp.remove(); } } catch (compRemoveError) {}
+            if (tempFolder) { removePreviewFolder(tempFolder); }
+        } else if (queueItem) {
+            try { queueItem.render = true; } catch (queueKeepError) {}
+        }
         previewBusy = false;
     }
     return success;
