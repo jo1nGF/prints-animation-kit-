@@ -102,7 +102,7 @@ function startNativePreviewPlayback(files) {
         var state = $.global.__AKNativePreviewState;
         if (!state || !state.files || !state.files.length || !state.control) { return; }
         try {
-            state.control.image = ScriptUI.newImage(state.files[state.index]);
+            state.control.image = ScriptUI.newImage(state.files[state.index].fsName);
             state.index += 1;
             if (state.index >= state.files.length) { state.index = 0; }
             previewPlaybackTask = app.scheduleTask("$.global.__AKNativePreviewTick()", state.frameDelay, false);
@@ -225,7 +225,7 @@ function renderNativePreview(number, mode) {
         if (previewFrameFolder) { removePreviewFolder(previewFrameFolder); }
         previewFrameFolder = tempFolder;
         tempFolder = null;
-        previewImageControl.image = ScriptUI.newImage(renderedFrames[0]);
+        previewImageControl.image = ScriptUI.newImage(renderedFrames[0].fsName);
         if (previewStatus) { previewStatus.text = mode + " preset " + n + "  |  " + renderedFrames.length + " frames"; }
         startNativePreviewPlayback(renderedFrames);
         success = true;
