@@ -67,59 +67,195 @@ function errorLoadedPreset() {
 alert("Presets not found! Put presets in a folder with script.\nPlease read instruction included in project.");
 exit;
 }
-function previewCore(number) {
-var n = Math.round(Number(number));
-if (!previewInfo) { return; }
-if (!n || n < 1 || n > loadedPresets || !textLines[n - 1]) {
-previewInfo.text = "NATIVE PREVIEW\nSelect a preset to inspect its settings.";
-return;
+var previewImageControl = null;
+var previewStatus = null;
+var previewFrameFolder = null;
+var previewBusy = false;
+var previewPlaybackTask = null;
+
+function removePreviewFolder(folder) {
+    if (!folder || !folder.exists) { return; }
+    var entries = folder.getFiles();
+    for (var q = 0; q < entries.length; q++) {
+        try { if (entries[q] instanceof File) { entries[q].remove(); } } catch (removeFileError) {}
+    }
+    try { folder.remove(); } catch (removeFolderError) {}
 }
-var parts = textLines[n - 1].split("!@ANIOM-PRESET@!");
-var head = (parts[0] || "").split("^");
-var properties = (parts[1] || "").split("#");
-var names = [];
-for (var p = 0; p < properties.length; p += 1) {
-if (properties[p]) { names.push(properties[p].split(":")[0]); }
+
+function stopNativePreview() {
+    try {
+        if (previewPlaybackTask !== null) { app.cancelTask(previewPlaybackTask); }
+    } catch (cancelError) {}
+    previewPlaybackTask = null;
+    try { $.global.__AKNativePreviewState = null; } catch (globalError) {}
 }
-previewInfo.text = "PRESET " + n + " / " + loadedPresets + "\n" +
-(head[0] || "2D") + "  |  " + (head[1] || "Range") + "  |  " +
-((head[2] || "Characters").split(",")[0]) + "\n" +
-(names.length ? names.join("  •  ") : "No animated properties") +
-"\nUse PREVIEW IN COMP to inspect the real AE animation.";
+
+function startNativePreviewPlayback(files) {
+    stopNativePreview();
+    $.global.__AKNativePreviewState = {
+        files: files,
+        index: 0,
+        control: previewImageControl,
+        frameDelay: 83
+    };
+    $.global.__AKNativePreviewTick = function () {
+        var state = $.global.__AKNativePreviewState;
+        if (!state || !state.files || !state.files.length || !state.control) { return; }
+        try {
+            state.control.image = ScriptUI.newImage(state.files[state.index]);
+            state.index += 1;
+            if (state.index >= state.files.length) { state.index = 0; }
+            previewPlaybackTask = app.scheduleTask("$.global.__AKNativePreviewTick()", state.frameDelay, false);
+        } catch (tickError) {
+            try { if (previewStatus) { previewStatus.text = "Preview playback error: " + tickError.toString(); } } catch (uiError) {}
+        }
+    };
+    $.global.__AKNativePreviewTick();
 }
-function createNativePreview() {
-try {
-if (!app.project) { throw new Error("Open or create an After Effects project first."); }
-var sourceComp = app.project.activeItem;
-var w = (sourceComp && sourceComp instanceof CompItem) ? sourceComp.width : 1920;
-var h = (sourceComp && sourceComp instanceof CompItem) ? sourceComp.height : 1080;
-var rate = (sourceComp && sourceComp instanceof CompItem) ? sourceComp.frameRate : 30;
-var previewComp = app.project.items.addComp("Animation Kit - Native Preview", w, h, 1, 5, rate);
-var previewLayer = previewComp.layers.addText("ANIMATION KIT\nNative Preview");
-previewLayer.name = "AK Preview Text";
-previewLayer.inPoint = 0;
-previewLayer.outPoint = 5;
-try {
-var textDocProp = previewLayer.property("ADBE Text Properties").property("ADBE Text Document");
-var textDoc = textDocProp.value;
-textDoc.fontSize = Math.min(120, Math.round(w / 12));
-textDoc.fillColor = [1, 1, 1];
-textDoc.applyFill = true;
-textDoc.applyStroke = false;
-textDoc.justification = ParagraphJustification.CENTER_JUSTIFY;
-textDocProp.setValue(textDoc);
-previewLayer.property("ADBE Transform Group").property("ADBE Position").setValue([w / 2, h / 2]);
-} catch (styleError) {}
-previewComp.openInViewer();
-previewLayer.selected = true;
-var previewApplied = executeCoreScript(previewLayer, true);
-if (!previewApplied) { previewComp.remove(); return; }
-previewComp.time = 0;
-previewComp.openInViewer();
-alert("Native preview composition created. Press Spacebar in the composition viewer to play the IN/OUT animation.");
-} catch (previewError) {
-alert("Could not create native preview: " + previewError.toString());
+
+function renderNativePreview(number, mode) {
+    if (previewBusy) { return; }
+    var n = Math.round(Number(number));
+    if (!n || n < 1 || n > loadedPresets || !textLines[n - 1]) {
+        if (previewStatus) { previewStatus.text = "Select a valid preset."; }
+        return;
+    }
+    if (!app.project) {
+        if (previewStatus) { previewStatus.text = "Open an After Effects project to preview."; }
+        return;
+    }
+
+    previewBusy = true;
+    stopNativePreview();
+    if (previewStatus) { previewStatus.text = "Rendering " + mode + " preset " + n + "..."; }
+    var oldInText = inSliderText.text;
+    var oldOutText = outSliderText.text;
+    var oldInEnabled = inCheckbox.value;
+    var oldOutEnabled = outCheckbox.value;
+    var previewComp = null;
+    var queueItem = null;
+    var rq = app.project.renderQueue;
+    var oldRenderStates = [];
+    var tempFolder = null;
+    var success = false;
+
+    try {
+        var stamp = (new Date()).getTime();
+        tempFolder = new Folder(Folder.temp.fsName + "/AK_NativePreview_" + stamp);
+        if (!tempFolder.create()) { throw new Error("Could not create temporary preview folder."); }
+
+        previewComp = app.project.items.addComp("AK_NATIVE_PREVIEW_TEMP", 220, 124, 1, 3.6, 12);
+        var previewLayer = previewComp.layers.addText("Animation Kit");
+        previewLayer.name = "AK Native Preview Text";
+        previewLayer.inPoint = 0;
+        previewLayer.outPoint = previewComp.duration;
+        try {
+            var textDocProp = previewLayer.property("ADBE Text Properties").property("ADBE Text Document");
+            var textDoc = textDocProp.value;
+            textDoc.fontSize = 28;
+            textDoc.fillColor = [1, 1, 1];
+            textDoc.applyFill = true;
+            textDoc.applyStroke = false;
+            textDoc.justification = ParagraphJustification.CENTER_JUSTIFY;
+            textDocProp.setValue(textDoc);
+            previewLayer.property("ADBE Transform Group").property("ADBE Position").setValue([110, 62]);
+        } catch (styleError) {}
+
+        if (mode == "IN") {
+            inSliderText.text = String(n);
+            inCheckbox.value = true;
+            outCheckbox.value = false;
+        } else {
+            outSliderText.text = String(n);
+            outCheckbox.value = true;
+            inCheckbox.value = false;
+        }
+
+        if (!executeCoreScript(previewLayer, true)) {
+            throw new Error("The selected preset could not be applied to the preview layer.");
+        }
+
+        inSliderText.text = oldInText;
+        outSliderText.text = oldOutText;
+        inCheckbox.value = oldInEnabled;
+        outCheckbox.value = oldOutEnabled;
+
+        queueItem = rq.items.add(previewComp);
+        queueItem.timeSpanStart = 0;
+        queueItem.timeSpanDuration = previewComp.duration;
+
+        var outputModule = queueItem.outputModule(1);
+        var outputTemplates = outputModule.templates;
+        var pngTemplate = null;
+        for (var t = 0; t < outputTemplates.length; t++) {
+            if (/png\s*sequence/i.test(outputTemplates[t])) {
+                pngTemplate = outputTemplates[t];
+                break;
+            }
+        }
+        if (!pngTemplate) { throw new Error("No PNG Sequence output template is installed in After Effects."); }
+        outputModule.applyTemplate(pngTemplate);
+        outputModule.file = new File(tempFolder.fsName + "/AKPreview.png");
+
+        for (var r = 1; r <= rq.items.length; r++) {
+            var existingItem = rq.items[r];
+            oldRenderStates.push({item: existingItem, render: existingItem.render});
+            existingItem.render = (existingItem === queueItem);
+        }
+        queueItem.render = true;
+        rq.render();
+
+        var renderedFrames = tempFolder.getFiles(function (file) {
+            return (file instanceof File) && (/\.png$/i).test(file.name);
+        });
+        renderedFrames.sort(function (a, b) {
+            return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0);
+        });
+        if (!renderedFrames || renderedFrames.length < 2) {
+            throw new Error("After Effects did not produce a PNG image sequence for this preview.");
+        }
+
+        if (queueItem) { queueItem.remove(); queueItem = null; }
+        if (previewComp) { previewComp.remove(); previewComp = null; }
+        for (var restore = 0; restore < oldRenderStates.length; restore++) {
+            try { oldRenderStates[restore].item.render = oldRenderStates[restore].render; } catch (restoreError) {}
+        }
+        oldRenderStates.length = 0;
+
+        if (previewFrameFolder) { removePreviewFolder(previewFrameFolder); }
+        previewFrameFolder = tempFolder;
+        tempFolder = null;
+        previewImageControl.image = ScriptUI.newImage(renderedFrames[0]);
+        if (previewStatus) { previewStatus.text = mode + " preset " + n + "  |  " + renderedFrames.length + " frames"; }
+        startNativePreviewPlayback(renderedFrames);
+        success = true;
+    } catch (previewError) {
+        if (previewStatus) { previewStatus.text = "Preview unavailable: " + previewError.toString(); }
+    } finally {
+        inSliderText.text = oldInText;
+        outSliderText.text = oldOutText;
+        inCheckbox.value = oldInEnabled;
+        outCheckbox.value = oldOutEnabled;
+        for (var restore2 = 0; restore2 < oldRenderStates.length; restore2++) {
+            try { oldRenderStates[restore2].item.render = oldRenderStates[restore2].render; } catch (restoreError2) {}
+        }
+        try { if (queueItem) { queueItem.remove(); } } catch (queueRemoveError) {}
+        try { if (previewComp) { previewComp.remove(); } } catch (compRemoveError) {}
+        if (tempFolder) { removePreviewFolder(tempFolder); }
+        previewBusy = false;
+    }
+    return success;
 }
+
+function previewCore(number, mode) {
+    var n = Math.round(Number(number));
+    if (!previewStatus) { return; }
+    if (!n || n < 1 || n > loadedPresets || !textLines[n - 1]) {
+        previewStatus.text = "Select a preset to preview.";
+        return;
+    }
+    if (mode) { renderNativePreview(n, mode); }
+    else { previewStatus.text = "Choose an IN or OUT preset to render its animation."; }
 }
 function executeCoreScript(targetLayer, isPreview) {
 app.beginUndoGroup(isPreview ? "Animation Kit - Native Preview" : "Animation Kit - Applying Preset");
@@ -422,7 +558,7 @@ var presetsNameArray = ["Text Preset Volume I", "Text Preset Volume II", "Dynami
 var scriptPath = File($.fileName).path + "//";
 var previewWinScr = new Window("palette", softwareName + " for Text", undefined);
 previewWinScr.orientation = "column";
-var grpPreview = previewWinScr.add("panel", [0, 0, 240, 130], "NATIVE PREVIEW");
+var grpPreview = previewWinScr.add("panel", [0, 0, 240, 165], "NATIVE PREVIEW");
 grpPreview.orientation = "column";
 grpPreview.alignChildren = ["fill", "fill"];
 var previewInfo = grpPreview.add("statictext", undefined, "NATIVE PREVIEW\nSelect a preset to inspect its settings.", {multiline: true});
@@ -481,27 +617,27 @@ changeLoadPresets();
 };
 inSliderText.onChanging = function () {
 inSlider.value = inSliderText.text;
-previewCore(inSliderText.text);
+previewStatus.text = "IN preset " + inSliderText.text + " (release to render).";
 };
 outSliderText.onChanging = function () {
 outSlider.value = outSliderText.text;
-previewCore(outSliderText.text);
+previewStatus.text = "OUT preset " + outSliderText.text + " (release to render).";
 };
 inSlider.onChanging = function () {
 inSliderText.text = Math.round(inSlider.value);
-previewCore(inSliderText.text);
+previewCore(inSliderText.text, "IN");
 };
 outSlider.onChanging = function () {
 outSliderText.text = Math.round(outSlider.value);
-previewCore(outSliderText.text);
+previewCore(outSliderText.text, "OUT");
 };
 inSlider.onChange = function () {
 inSliderText.text = Math.round(inSlider.value);
-previewCore(inSliderText.text);
+previewCore(inSliderText.text, "IN");
 };
 outSlider.onChange = function () {
 outSliderText.text = Math.round(outSlider.value);
-previewCore(outSliderText.text);
+previewCore(outSliderText.text, "OUT");
 };
 inCheckbox.onClick = function () {
 if (!inCheckbox.value) { 
@@ -524,7 +660,6 @@ outSliderText.enabled = true;
 }
 };
 buttonExe.onClick = function () { executeCoreScript(null, false); };
-previewButton.onClick = createNativePreview;
 buttonClose.onClick = function () {
 previewWinScr.hide();
 };
