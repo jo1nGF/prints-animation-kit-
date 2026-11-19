@@ -44,6 +44,7 @@ jobs:
         continue-on-error: true
         shell: bash
         run: |
+          set -o pipefail
           mkdir -p decompiled
           BIN="$(find tools/jsxer -type f -name jsxer -perm -u+x -print -quit)"
           if [ -z "$BIN" ]; then
@@ -51,7 +52,70 @@ jobs:
             exit 1
           fi
           "$BIN" -o "$GITHUB_WORKSPACE/decompiled/Animation Kit.decompiled.jsx" "$GITHUB_WORKSPACE/Animation Kit.jsxbin" 2>&1 | tee decompiled/jsxer.log
-          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Patch and validate native After Effects package
+        if: steps.decompile.outcome == 'success'
+        shell: bash
+        run: |
+          python3 tools/patch_native_preview.py
+          cp "Text Preset Volume I.jsxinc" native-package/
+          cp "Text Preset Volume II.jsxinc" native-package/
+          cp "decompiled/jsxer.log" native-package/
+          cat > native-package/README.txt <<'EOF'
+          ANIMATION KIT 2026 — NATIVE AFTER EFFECTS BUILD
+
+          INSTALLATION
+          1. Keep "Animation Kit 2026.jsx" and both "Text Preset Volume*.jsxinc" files in the same folder.
+          2. Run the JSX with File > Scripts > Run Script File.
+          3. For a dockable panel, copy all three files into After Effects > Support Files > Scripts > ScriptUI Panels, restart After Effects, then open Window > Animation Kit 2026.jsx.
+
+          USE
+          - Select a text layer in an active composition.
+          - Choose the preset pack and independent IN / OUT preset numbers.
+          - Use APPLY PRESET to add the original native text animators and IN / OUT markers.
+          - Use PREVIEW IN COMP to create a temporary composition with the selected presets. Press Spacebar in the Composition viewer to play it.
+          - Uncheck IN or OUT to remove that side's animator and matching ANIOM_AK[CONF] marker when APPLY PRESET is used.
+
+          The two original preset volumes and the original generated IN / OUT expression logic are retained.
+          The Flash/SWF preview dependency has been removed.
+          The automated checks validate JSX syntax and all 2,100 preset records. The panel still needs a final runtime check inside After Effects 2026.
+          EOF
+          cp "native-package/Animation Kit 2026.jsx" /tmp/animation-kit-2026.js
+          node --check /tmp/animation-kit-2026.js
+          python3 - <<'PY'
+          from pathlib import Path
+          checks = [
+              ("Text Preset Volume I.jsxinc", 1333),
+              ("Text Preset Volume II.jsxinc", 767),
+          ]
+          for filename, expected in checks:
+              rows = [x for x in Path(filename).read_text(encoding="utf-8-sig").splitlines() if x.strip()]
+              assert len(rows) == expected, (filename, len(rows), expected)
+              for number, row in enumerate(rows, 1):
+                  assert row.count("!@ANIOM-PRESET@!") == 1, (filename, number, "delimiter")
+                  head, props = row.split("!@ANIOM-PRESET@!")
+                  assert len(head.split("^")) >= 3, (filename, number, "header")
+                  for prop in props.split("#"):
+                      if prop:
+                          assert ":" in prop, (filename, number, prop)
+              print(f"{filename}: {len(rows)} valid records")
+          js = Path("native-package/Animation Kit 2026.jsx").read_text(encoding="utf-8")
+          assert "generateExpression" in js and "ANIOM_AK[CONF]" in js
+          assert 'add("FlashPlayer")' not in js and "loadMovie(" not in js
+          print("Native script checks passed.")
+          PY
+          cd native-package
+          zip -qr ../animation-kit-ae2026-native.zip .
+
+      - name: Upload native AE 2026 package
+        if: steps.decompile.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: animation-kit-ae2026-native-package
+          path: animation-kit-ae2026-native.zip
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload decompilation result and logs
         if: always()
