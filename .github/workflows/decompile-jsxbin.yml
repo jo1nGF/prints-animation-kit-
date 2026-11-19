@@ -2,6 +2,9 @@ name: Decompile Animation Kit JSXBIN
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - restore/jsxbin-decompile
 
 permissions:
   contents: read
