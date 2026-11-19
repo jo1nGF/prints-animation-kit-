@@ -24,7 +24,7 @@ inSlider.value = 1;
 inSliderText.text = 1;
 outSlider.value = 1;
 outSliderText.text = 1;
-previewCore(1);
+previewCore(1, "IN");
 }
 else {
 errorLoadedPreset();
