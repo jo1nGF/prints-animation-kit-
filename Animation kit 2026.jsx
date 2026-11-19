@@ -561,11 +561,10 @@ previewWinScr.orientation = "column";
 var grpPreview = previewWinScr.add("panel", [0, 0, 240, 165], "NATIVE PREVIEW");
 grpPreview.orientation = "column";
 grpPreview.alignChildren = ["fill", "fill"];
-var previewInfo = grpPreview.add("statictext", undefined, "NATIVE PREVIEW\nSelect a preset to inspect its settings.", {multiline: true});
-previewInfo.alignment = ["fill", "fill"];
-previewInfo.justify = "center";
-var previewButton = grpPreview.add("button", undefined, "PREVIEW IN COMP");
-previewButton.helpTip = "Create a temporary composition using the selected IN and OUT presets.";
+previewImageControl = grpPreview.add("image", [8, 8, 228, 132], ScriptUI.newImage(iconPath + "naiSWF_image.png"));
+previewImageControl.alignment = ["center", "center"];
+previewStatus = grpPreview.add("statictext", undefined, "Choose an IN or OUT preset.", {multiline: true});
+previewStatus.alignment = ["fill", "bottom"];
 previewWinScr.add("panel", [0, 0, 240, 0]);
 var grpPacks = previewWinScr.add("group", undefined, "");
 usedPack_text = grpPacks.add("image", [0, 0, 24, 20], iconPath + "package_icon.png");
@@ -623,13 +622,15 @@ outSliderText.onChanging = function () {
 outSlider.value = outSliderText.text;
 previewStatus.text = "OUT preset " + outSliderText.text + " (release to render).";
 };
+inSliderText.onChange = function () { previewCore(inSliderText.text, "IN"); };
+outSliderText.onChange = function () { previewCore(outSliderText.text, "OUT"); };
 inSlider.onChanging = function () {
 inSliderText.text = Math.round(inSlider.value);
-previewCore(inSliderText.text, "IN");
+previewStatus.text = "IN preset " + inSliderText.text + " (release to render).";
 };
 outSlider.onChanging = function () {
 outSliderText.text = Math.round(outSlider.value);
-previewCore(outSliderText.text, "OUT");
+previewStatus.text = "OUT preset " + outSliderText.text + " (release to render).";
 };
 inSlider.onChange = function () {
 inSliderText.text = Math.round(inSlider.value);
@@ -661,7 +662,9 @@ outSliderText.enabled = true;
 };
 buttonExe.onClick = function () { executeCoreScript(null, false); };
 buttonClose.onClick = function () {
-previewWinScr.hide();
+ stopNativePreview();
+ if (previewFrameFolder) { removePreviewFolder(previewFrameFolder); previewFrameFolder = null; }
+ previewWinScr.hide();
 };
 myPanel.grp.g_execute.btn_execute.onClick = function () {
 previewWinScr.center();
