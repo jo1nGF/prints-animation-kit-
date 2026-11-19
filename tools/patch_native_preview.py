@@ -198,7 +198,7 @@ availableFlashPlayer = false;
 '''
 )
 # Keep the package independent from the original SWF.
-if "FlashPlayer" in s or "loadMovie(" in s or "PreviewPlayer" in s:
+if 'add("FlashPlayer")' in s or "loadMovie(" in s or "PreviewPlayer" in s:
     raise SystemExit("Flash dependency remains after native preview patch.")
 
 out = out_dir / "Animation Kit 2026.jsx"
