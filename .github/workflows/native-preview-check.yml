@@ -1,3 +1,4 @@
+# Re-run validation after the final ScriptUI image-path adjustment.
 name: Validate Animation Kit native preview prototype
 
 on:
