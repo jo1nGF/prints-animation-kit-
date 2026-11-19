@@ -24,7 +24,7 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
           const a = fs.readFileSync('Text Preset Volume I.jsxinc', 'utf8').split(/\r?\n/).filter(Boolean);
-          const b = fs.readFileSync('Text Preset Volume II.jsxinc', 'utf8').split(/\\r?\\n/).filter(Boolean);
+          const b = fs.readFileSync('Text Preset Volume II.jsxinc', 'utf8').split(/\r?\n/).filter(Boolean);
           const script = fs.readFileSync('Animation kit 2026.jsx', 'utf8');
           if (a.length !== 1333 || b.length !== 767) {
             throw new Error('Preset count mismatch: Volume I=' + a.length + ', Volume II=' + b.length);
