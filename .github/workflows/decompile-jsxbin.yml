@@ -27,7 +27,7 @@ jobs:
 
       - name: Configure and build JSXer
         run: |
-          cmake -S tools/jsxer -B tools/jsxer/build -DCMAKE_BUILD_TYPE=Release
+          cmake -S tools/jsxer -B tools/jsxer/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
           cmake --build tools/jsxer/build --config Release --parallel 2
           find tools/jsxer -type f -name jsxer -perm -u+x -print
 
