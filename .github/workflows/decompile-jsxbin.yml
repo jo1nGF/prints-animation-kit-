@@ -1,0 +1,61 @@
+name: Decompile Animation Kit JSXBIN
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decompile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Animation Kit repository
+        uses: actions/checkout@v4
+
+      - name: Checkout JSXer 1.7.4
+        uses: actions/checkout@v4
+        with:
+          repository: AngeloD2022/jsxer
+          ref: v1.7.4
+          path: tools/jsxer
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      - name: Configure and build JSXer
+        run: |
+          cmake -S tools/jsxer -B tools/jsxer/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build tools/jsxer/build --config Release --parallel 2
+          find tools/jsxer -type f -name jsxer -perm -u+x -print
+
+      - name: Decompile original Animation Kit
+        id: decompile
+        continue-on-error: true
+        shell: bash
+        run: |
+          mkdir -p decompiled
+          BIN="$(find tools/jsxer -type f -name jsxer -perm -u+x -print -quit)"
+          if [ -z "$BIN" ]; then
+            echo "JSXer executable not found after build." | tee decompiled/build-error.txt
+            exit 1
+          fi
+          "$BIN" -o "$GITHUB_WORKSPACE/decompiled/Animation Kit.decompiled.jsx" "$GITHUB_WORKSPACE/Animation Kit.jsxbin" 2>&1 | tee decompiled/jsxer.log
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload decompilation result and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: animation-kit-jsxbin-decompilation
+          path: decompiled/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Fail if decompilation did not produce source
+        if: always()
+        shell: bash
+        run: |
+          test -s "decompiled/Animation Kit.decompiled.jsx"
