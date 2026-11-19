@@ -1,4 +1,4 @@
-name: Decompile Animation Kit JSXBIN
+name: Decompile Animation Kit JSXBIN (recovery)
 
 on:
   workflow_dispatch:
