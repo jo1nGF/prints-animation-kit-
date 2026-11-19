@@ -23,6 +23,11 @@ jobs:
           ref: v1.7.4
           path: tools/jsxer
 
+      - name: Patch missing standard C++ includes in JSXer
+        run: |
+          sed -i '1i #include <stdint.h>\n#include <string>' tools/jsxer/src/jsxer/common.h
+          sed -n '1,12p' tools/jsxer/src/jsxer/common.h
+
       - name: Install build tools
         run: |
           sudo apt-get update
