@@ -1,4 +1,5 @@
 name: Decompile Animation Kit JSXBIN (recovery)
+# Rebuild the native panel after patcher maintenance.
 
 on:
   workflow_dispatch:
