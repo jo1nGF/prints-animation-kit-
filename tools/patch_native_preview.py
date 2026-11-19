@@ -80,11 +80,7 @@ replace_once(
     'for (var i = layerMarkers.numKeys; i >= 1; i -= 1) { \nif ((layerMarkers.keyValue(i).comment == effect_in_out) && (layerMarkers.keyValue(i).cuePointName == marker_cuePointName)) {',
     "reverse marker iteration"
 )
-replace_once(
-    'if (mainVar == "3D") { \ncurrentLayer.threeDPerChar = true;\n}',
-    'currentLayer.threeDPerChar = (mainVar == "3D");',
-    "2D/3D per-character state"
-)
+# Preserve the original behavior: only 3D presets enable per-character 3D.
 replace_once(
 '''var appComp = app.project.activeItem;
 if (!appComp) { 
@@ -167,7 +163,7 @@ preview.add("image", [0, 0, 240, 130], iconPath + "naiSWF_image.png");
 '''var grpPreview = previewWinScr.add("panel", [0, 0, 240, 130], "NATIVE PREVIEW");
 grpPreview.orientation = "column";
 grpPreview.alignChildren = ["fill", "fill"];
-var previewInfo = grpPreview.add("statictext", undefined, "NATIVE PREVIEW\\\\nSelect a preset to inspect its settings.", {multiline: true});
+var previewInfo = grpPreview.add("statictext", undefined, "NATIVE PREVIEW\\nSelect a preset to inspect its settings.", {multiline: true});
 previewInfo.alignment = ["fill", "fill"];
 previewInfo.justify = "center";
 var previewButton = grpPreview.add("button", undefined, "PREVIEW IN COMP");
@@ -194,8 +190,7 @@ s = s.replace(
 if (parseFloat(app.version) < 10) { 
 availableFlashPlayer = false;
 }''',
-'''var availableFlashPlayer = false; // Flash Player is intentionally disabled in modern After Effects.
-'''
+""
 )
 # Keep the package independent from the original SWF.
 if 'add("FlashPlayer")' in s or "loadMovie(" in s or "PreviewPlayer" in s:
