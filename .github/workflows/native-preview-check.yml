@@ -38,3 +38,5 @@ jobs:
           }
           console.log('PASS: 2,100 presets preserved; preview code and JavaScript syntax validated.');
           NODE
+
+# Revalidate automatic initial preview trigger.
