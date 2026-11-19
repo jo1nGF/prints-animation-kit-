@@ -1,0 +1,39 @@
+name: Validate Animation Kit native preview prototype
+
+on:
+  push:
+    branches:
+      - native-preview-render-test
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check ExtendScript JavaScript syntax
+        run: node --check < "Animation kit 2026.jsx"
+      - name: Validate preset volumes and preview integration
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const a = fs.readFileSync('Text Preset Volume I.jsxinc', 'utf8').split(/\\r?\\n/).filter(Boolean);
+          const b = fs.readFileSync('Text Preset Volume II.jsxinc', 'utf8').split(/\\r?\\n/).filter(Boolean);
+          const script = fs.readFileSync('Animation kit 2026.jsx', 'utf8');
+          if (a.length !== 1333 || b.length !== 767) {
+            throw new Error('Preset count mismatch: Volume I=' + a.length + ', Volume II=' + b.length);
+          }
+          for (const token of ['renderNativePreview', 'ScriptUI.newImage', 'app.scheduleTask', 'PNG Sequence']) {
+            if (!script.includes(token)) throw new Error('Missing preview integration token: ' + token);
+          }
+          if (script.includes('PREVIEW IN COMP') || script.includes('previewButton')) {
+            throw new Error('Legacy external composition preview UI is still present.');
+          }
+          console.log('PASS: 2,100 presets preserved; preview code and JavaScript syntax validated.');
+          NODE
